@@ -1,37 +1,30 @@
 package com.wzjing.scan;
 
-import android.content.ComponentName;
+import android.annotation.SuppressLint;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Rect;
-import android.hardware.camera2.CameraManager;
 import android.net.Uri;
 import android.os.AsyncTask;
-import android.support.v7.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.ChecksumException;
 import com.google.zxing.DecodeHintType;
 import com.google.zxing.FormatException;
-import com.google.zxing.LuminanceSource;
-import com.google.zxing.MultiFormatReader;
 import com.google.zxing.NotFoundException;
 import com.google.zxing.PlanarYUVLuminanceSource;
-import com.google.zxing.RGBLuminanceSource;
 import com.google.zxing.Reader;
 import com.google.zxing.Result;
 import com.google.zxing.common.HybridBinarizer;
-import com.google.zxing.multi.qrcode.QRCodeMultiReader;
 import com.google.zxing.qrcode.QRCodeReader;
 
 import java.io.FileNotFoundException;
@@ -70,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @SuppressLint("StaticFieldLeak")
     @Override
     protected void onActivityResult(int requestCode, final int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -96,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
                         int[] pix = new int[bitmap.getWidth() * bitmap.getHeight()];
                         bitmap.getPixels(pix, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
                         byte[] yuv = new byte[pix.length];
-                        encodeYUV420SP(yuv, pix, bitmap.getWidth(), bitmap.getHeight());
+                        QrUtil.argb2YUV420sp(yuv, pix, bitmap.getWidth(), bitmap.getHeight());
                         PlanarYUVLuminanceSource source = new PlanarYUVLuminanceSource(yuv, bitmap.getWidth(), bitmap.getHeight(), 0, 0, bitmap.getWidth(), bitmap.getHeight(), false);
 //                        LuminanceSource source = new RGBLuminanceSource(bitmap.getWidth(), bitmap.getHeight(), pixels);
                         Log.i(TAG, "Step2");
@@ -106,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
                         Map<DecodeHintType, Object> hint = new HashMap<>();
                         hint.put(DecodeHintType.CHARACTER_SET, "utf-8");
                         hint.put(DecodeHintType.TRY_HARDER, true);
-                        hint.put(DecodeHintType.PURE_BARCODE, false);
+//                        hint.put(DecodeHintType.PURE_BARCODE, false);
                         List<BarcodeFormat> formats = new ArrayList<>();
                         formats.add(BarcodeFormat.QR_CODE);
                         hint.put(DecodeHintType.POSSIBLE_FORMATS, formats);
@@ -114,19 +108,19 @@ public class MainActivity extends AppCompatActivity {
                         Result result = reader.decode(bb, hint);
                         return result.getText();
                     } catch (FileNotFoundException e) {
-                        Log.w(TAG, "Exception while resove picture data!");
-                        return "Exception while resove picture data!";
+                        Log.e(TAG, "Exception while resolve picture data!");
+                        return "Exception while resolve picture data!";
                     } catch (FormatException e) {
-                        Log.w(TAG, "Exception-FormatException");
+                        Log.e(TAG, "Exception-FormatException");
                         return "Exception-FormatException";
                     } catch (ChecksumException e) {
-                        Log.w(TAG, "Exception-ChecksumException");
+                        Log.e(TAG, "Exception-ChecksumException");
                         return "Exception-ChecksumException";
                     } catch (NotFoundException e) {
-                        Log.w(TAG, "Exception-NotFoundException");
+                        Log.e(TAG, "Exception-NotFoundException");
                         return "Exception-NotFoundException";
                     } catch (IOException e) {
-                        Log.w(TAG, "Exception-IOException");
+                        Log.e(TAG, "Exception-IOException");
                         return "Exception-IOException";
                     }
                 }
@@ -211,49 +205,5 @@ public class MainActivity extends AppCompatActivity {
         }
 
         return BitmapFactory.decodeByteArray(buffer, 0, length, option);
-    }
-
-    /**
-     * 将bitmap里得到的argb数据转成yuv420sp格式
-     * 这个yuv420sp数据就可以直接传给MediaCodec,通过AvcEncoder间接进行编码
-     *
-     * @param yuv420sp 用来存放yuv429sp数据
-     * @param argb     传入argb数据
-     * @param width    图片width
-     * @param height   图片height
-     */
-    public static void encodeYUV420SP(byte[] yuv420sp, int[] argb, int width, int height) {
-        final int frameSize = width * height;
-
-        int yIndex = 0;
-        int uvIndex = frameSize;
-
-        int a, R, G, B, Y, U, V;
-        int index = 0;
-        for (int j = 0; j < height; j++) {
-            for (int i = 0; i < width; i++) {
-
-                a = (argb[index] & 0xff000000) >> 24; // a is not used obviously
-                R = (argb[index] & 0xff0000) >> 16;
-                G = (argb[index] & 0xff00) >> 8;
-                B = (argb[index] & 0xff);
-
-                // well known RGB to YUV algorithm
-                Y = ((66 * R + 129 * G + 25 * B + 128) >> 8) + 16;
-                U = ((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128;
-                V = ((112 * R - 94 * G - 18 * B + 128) >> 8) + 128;
-
-                // NV21 has a plane of Y and interleaved planes of VU each sampled by a factor of 2
-                //    meaning for every 4 Y pixels there are 1 V and 1 U.  Note the sampling is every other
-                //    pixel AND every other scanline.
-                yuv420sp[yIndex++] = (byte) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y));
-                if (j % 2 == 0 && index % 2 == 0 && uvIndex < (yuv420sp.length - 2)) {
-                    yuv420sp[uvIndex++] = (byte) ((V < 0) ? 0 : ((V > 255) ? 255 : V));
-                    yuv420sp[uvIndex++] = (byte) ((U < 0) ? 0 : ((U > 255) ? 255 : U));
-                }
-
-                index++;
-            }
-        }
     }
 }
