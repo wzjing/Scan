@@ -1,9 +1,12 @@
 package com.wzjing.scan;
 
+import android.annotation.SuppressLint;
+
 import androidx.annotation.IdRes;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 
+@SuppressLint("Registered")
 public class BaseActivity extends AppCompatActivity {
 
     @IdRes
